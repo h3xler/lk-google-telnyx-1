@@ -1,15 +1,16 @@
 #!/bin/bash
 
-# LiveKit Sunucusuna SIP kuralını otomatik kaydet
-# Hata alsa bile (zaten varsa) devam etmesi için || true ekledik
+# LiveKit Sunucusuna bağlanıp telefon yönlendirme kuralını oluşturur
+# Parametre hatasını gidermek için --room-name-prefix kullanıyoruz
 lk sip dispatch create \
   --url "http://livekit:7880" \
   --api-key "$LIVEKIT_API_KEY" \
   --api-secret "$LIVEKIT_API_SECRET" \
   --name "telnyx_rule" \
-  --room-preset "test_agent" || true
+  --rule-type individual \
+  --room-name-prefix "test_agent" || true
 
-echo "SIP Dispatch Rule checked/created."
+echo "SIP Yönlendirme Kuralı Kontrol Edildi."
 
-# Agent'ı başlat
+# Gemini Agent'ı başlat
 uv run python src/agent.py start
