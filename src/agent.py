@@ -16,29 +16,24 @@ from livekit.agents import (
     room_io,
 )
 from google.genai import types
-from livekit.plugins import google, noise_cancellation, silero
+from livekit.plugins import google, silero
 
 logger = logging.getLogger("gemini-telephony-agent")
 
 load_dotenv(".env.local")
 
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
-
 call_transcript: list[dict] = []
 call_start_time: datetime | None = None
 
 async def hangup_call():
     ctx = get_job_context()
-    if ctx is None:
-        return
-    await ctx.api.room.delete_room(
-        api.DeleteRoomRequest(room=ctx.room.name)
-    )
+    if ctx is None: return
+    await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
 
 async def send_end_of_call_report():
     global call_transcript, call_start_time
-    if not call_transcript:
-        return
+    if not call_transcript: return
     call_end_time = datetime.now()
     duration_seconds = (call_end_time - call_start_time).total_seconds() if call_start_time else 0
     report = {
@@ -46,7 +41,6 @@ async def send_end_of_call_report():
         "call_end": call_end_time.isoformat(),
         "duration_seconds": duration_seconds,
         "transcript": call_transcript,
-        "message_count": len(call_transcript),
     }
     try:
         async with httpx.AsyncClient() as client:
@@ -73,19 +67,16 @@ async def entrypoint(ctx: JobContext):
     call_transcript = []
     call_start_time = datetime.now()
     
+    # auto_subscribe=True (varsayılan) zaten herkesi duymasını sağlar.
     await ctx.connect()
     
-    # --- KRİTİK GÜNCELLEME: ÇOKLU KATILIMCI DESTEĞİ ---
-    # Agent'ın odadaki tüm katılımcıların sesini almasını sağlar.
-    await ctx.room.update_subscription_permissions(all_participants_allowed=True)
-    
-    logger.info(f"Oda bağlantısı kuruldu: {ctx.room.name}")
+    logger.info(f"Odaya bağlandı: {ctx.room.name}")
 
     model = google.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-09-2025",
         voice="Zephyr",
         instructions="""You are a professional assistant at Mars Logistics. 
-        You are in a group call. Be brief and help everyone in the room.""",
+        You are in a group call with multiple people. Listen to everyone and be helpful.""",
         temperature=0.6,
         thinking_config=types.ThinkingConfig(include_thoughts=False),
     )
@@ -100,17 +91,8 @@ async def entrypoint(ctx: JobContext):
             content = msg.text_content() if hasattr(msg, 'text_content') else ""
             call_transcript.append({"role": role, "content": content})
 
-    await session.start(
-        agent=Assistant(),
-        room=ctx.room,
-        room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=lambda params: noise_cancellation.BVCTelephony()
-                if params.participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                else noise_cancellation.BVC(),
-            ),
-        ),
-    )
+    # On-prem uyumluluğu için karmaşık ses filtrelerini kaldırdık.
+    await session.start(agent=Assistant(), room=ctx.room)
     
     await session.generate_reply(instructions="Greet everyone in the room.")
     ctx.add_shutdown_callback(send_end_of_call_report)
