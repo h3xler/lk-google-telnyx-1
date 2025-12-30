@@ -54,7 +54,7 @@ class Assistant(Agent):
 
     @function_tool
     async def hang_up(self, ctx: RunContext):
-        """Telefonu kapatır."""
+        """Telefonu veya odayı kapatır."""
         await ctx.session.generate_reply(instructions="Say a brief goodbye.")
         await asyncio.sleep(2)
         await hangup_call()
@@ -67,7 +67,8 @@ async def entrypoint(ctx: JobContext):
     call_transcript = []
     call_start_time = datetime.now()
     
-    # auto_subscribe=True (varsayılan) zaten herkesi duymasını sağlar.
+    # auto_subscribe=True (varsayılan) sayesinde odaya giren herkes otomatik dinlenir.
+    # On-prem yapılarda ek izin komutuna gerek yoktur.
     await ctx.connect()
     
     logger.info(f"Odaya bağlandı: {ctx.room.name}")
@@ -75,12 +76,14 @@ async def entrypoint(ctx: JobContext):
     model = google.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-09-2025",
         voice="Zephyr",
-        instructions="""You are a professional assistant at Mars Logistics. 
-        You are in a group call with multiple people. Listen to everyone and be helpful.""",
+        instructions="""You are a helpful AI assistant at Mars Logistics. 
+        You are in a meeting room with several people. 
+        Listen to everyone and reply naturally. Keep it brief.""",
         temperature=0.6,
         thinking_config=types.ThinkingConfig(include_thoughts=False),
     )
 
+    # VAD (Voice Activity Detection) yapılandırması
     session = AgentSession(llm=model, vad=ctx.proc.userdata["vad"])
 
     @session.on("conversation_item_added")
@@ -91,10 +94,11 @@ async def entrypoint(ctx: JobContext):
             content = msg.text_content() if hasattr(msg, 'text_content') else ""
             call_transcript.append({"role": role, "content": content})
 
-    # On-prem uyumluluğu için karmaşık ses filtrelerini kaldırdık.
+    # On-prem sunucuda hata veren 'noise_cancellation.BVC()' kısımlarını sildik.
+    # Bu şekilde Agent ham sesi alır ve Gemini kendi içinde gürültüyü temizler.
     await session.start(agent=Assistant(), room=ctx.room)
     
-    await session.generate_reply(instructions="Greet everyone in the room.")
+    await session.generate_reply(instructions="Hello everyone! I am now listening to this room.")
     ctx.add_shutdown_callback(send_end_of_call_report)
 
 if __name__ == "__main__":
