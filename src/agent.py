@@ -34,5 +34,12 @@ async def entrypoint(ctx: JobContext):
     
     await session.generate_reply(instructions="Hello! I am connected and ready to help.")
 
+# DOSYANIN EN SONU TAM OLARAK BÖYLE OLMALI:
 if __name__ == "__main__":
-    agents.cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
+    agents.cli.run_app(
+        agents.WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            prewarm_fnc=prewarm,
+            # agent_name satırını tamamen sildik!
+        )
+    )
